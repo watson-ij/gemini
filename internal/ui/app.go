@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -521,16 +522,23 @@ func (m *Model) loadURL(url string) tea.Cmd {
 
 // resolveURL resolves a relative URL against the current URL
 func (m *Model) resolveURL(relativeURL string) string {
-	// Simple implementation - would need proper URL resolution
-	if strings.HasPrefix(relativeURL, "/") {
-		// Absolute path
-		parts := strings.SplitN(m.currentURL, "/", 4)
-		if len(parts) >= 3 {
-			return parts[0] + "//" + parts[2] + relativeURL
-		}
+	// Parse the base URL (current URL)
+	baseURL, err := url.Parse(m.currentURL)
+	if err != nil {
+		// If we can't parse the current URL, return the relative URL as-is
+		return relativeURL
 	}
-	// For now, just return as-is
-	return relativeURL
+
+	// Parse the relative URL
+	refURL, err := url.Parse(relativeURL)
+	if err != nil {
+		// If we can't parse the relative URL, return it as-is
+		return relativeURL
+	}
+
+	// Resolve the reference URL against the base URL
+	resolvedURL := baseURL.ResolveReference(refURL)
+	return resolvedURL.String()
 }
 
 // Messages
