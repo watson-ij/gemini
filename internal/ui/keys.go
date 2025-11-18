@@ -115,12 +115,12 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("ctrl+enter", "navigate"),
 		),
 		Back: key.NewBinding(
-			key.WithKeys("alt+left"),
-			key.WithHelp("alt+←", "back"),
+			key.WithKeys("alt+left", "p"),
+			key.WithHelp("alt+←/p", "back"),
 		),
 		Forward: key.NewBinding(
-			key.WithKeys("alt+right"),
-			key.WithHelp("alt+→", "forward"),
+			key.WithKeys("alt+right", "n"),
+			key.WithHelp("alt+→/n", "forward"),
 		),
 		Reload: key.NewBinding(
 			key.WithKeys("ctrl+r"),
