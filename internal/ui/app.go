@@ -418,7 +418,7 @@ func (m Model) browseView() string {
 	status := statusStyle.Render(statusLeft + strings.Repeat(" ", statusPadding) + statusRight)
 
 	// Help
-	helpText := m.styles.HelpBar.Render("↑/↓: scroll | tab: next link | enter: follow | ctrl+l: address | ctrl+q: quit")
+	helpText := m.styles.HelpBar.Render("↑/↓: scroll | tab: next link | enter: follow | p/n: back/forward | ctrl+l: address | ctrl+q: quit")
 
 	return lipgloss.JoinVertical(lipgloss.Left,
 		title,
@@ -454,8 +454,8 @@ Links:
 URL Navigation:
   Ctrl+L         Focus address bar
   Ctrl+R         Reload current page
-  Alt+←          Go back
-  Alt+→          Go forward
+  Alt+← / p      Go back
+  Alt+→ / n      Go forward
 
 Other:
   Ctrl+B         Toggle bookmarks (TODO)
