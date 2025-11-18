@@ -31,6 +31,9 @@ const (
 
 	// ModeBookmarks is when the bookmarks sidebar is displayed
 	ModeBookmarks
+
+	// ModeInput is when the server requests user input (status 10/11)
+	ModeInput
 )
 
 // Model is the main application model
@@ -46,6 +49,7 @@ type Model struct {
 	// Components
 	viewport    viewport.Model
 	addressBar  textinput.Model
+	queryInput  textinput.Model  // For server input requests (status 10/11)
 	help        help.Model
 	keys        KeyMap
 
@@ -55,6 +59,11 @@ type Model struct {
 	rawContent  string
 	loading     bool
 	selectedLink int  // Currently selected link index (-1 = none)
+
+	// Input state (for status 10/11)
+	queryPrompt    string  // The prompt message from the server
+	querySensitive bool    // Whether this is sensitive input (status 11)
+	queryURL       string  // The URL that requested input
 
 	// Protocol
 	client *protocol.Client
@@ -141,6 +150,11 @@ func NewModel(startURL string) Model {
 		ti.SetValue(startURL)
 	}
 
+	// Create text input for query input (status 10/11)
+	qi := textinput.New()
+	qi.Placeholder = "Enter your query..."
+	qi.CharLimit = 1024
+
 	// Create Gemini client
 	client := protocol.NewClient()
 
@@ -156,6 +170,7 @@ func NewModel(startURL string) Model {
 	m := Model{
 		mode:         ModeBrowse,
 		addressBar:   ti,
+		queryInput:   qi,
 		viewport:     vp,
 		help:         help.New(),
 		keys:         DefaultKeyMap(),
@@ -228,11 +243,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.statusMsg = fmt.Sprintf("Error: %v", msg.err)
 
+	case inputRequestMsg:
+		m.loading = false
+		m.queryPrompt = msg.prompt
+		m.querySensitive = msg.sensitive
+		m.queryURL = msg.url
+		m.mode = ModeInput
+		m.queryInput.Reset()
+		if msg.sensitive {
+			m.queryInput.EchoMode = textinput.EchoPassword
+			m.queryInput.EchoCharacter = '•'
+		} else {
+			m.queryInput.EchoMode = textinput.EchoNormal
+		}
+		m.queryInput.Focus()
+		return m, textinput.Blink
+
 	case tea.KeyMsg:
 		// Handle mode-specific keys first
 		switch m.mode {
 		case ModeAddressBar:
 			return m.updateAddressBar(msg)
+
+		case ModeInput:
+			return m.updateQueryInput(msg)
 
 		case ModeHelp:
 			if key.Matches(msg, m.keys.Help) || msg.String() == "esc" {
@@ -352,6 +386,37 @@ func (m Model) updateAddressBar(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// updateQueryInput handles updates when in input mode (status 10/11)
+func (m Model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case "enter":
+		m.mode = ModeBrowse
+		m.queryInput.Blur()
+		query := m.queryInput.Value()
+
+		// Build the URL with the query parameter
+		// In Gemini, the query is appended to the URL with a ? separator
+		queryURL := m.queryURL
+		if query != "" {
+			// URL-encode the query
+			queryURL = queryURL + "?" + url.QueryEscape(query)
+		}
+
+		return m, m.loadURL(queryURL)
+
+	case "esc":
+		m.mode = ModeBrowse
+		m.queryInput.Blur()
+		m.queryInput.Reset()
+		return m, nil
+	}
+
+	m.queryInput, cmd = m.queryInput.Update(msg)
+	return m, cmd
+}
+
 // View renders the application
 func (m Model) View() string {
 	if !m.ready {
@@ -362,6 +427,8 @@ func (m Model) View() string {
 	switch m.mode {
 	case ModeHelp:
 		return m.helpView()
+	case ModeInput:
+		return m.inputView()
 	default:
 		return m.browseView()
 	}
@@ -479,6 +546,66 @@ Press ? or ESC to close this help screen.
 	return lipgloss.JoinVertical(lipgloss.Left, title, content)
 }
 
+// inputView renders the input modal for status 10/11 (input requests)
+func (m Model) inputView() string {
+	// Title bar
+	title := m.styles.TitleBar.Render("📡 Gemini Browser - Input Required")
+
+	// Create a modal-style box for the input
+	modalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("69")).
+		Padding(1, 2).
+		Width(m.width - 10).
+		MaxWidth(80)
+
+	// Prompt text
+	promptText := m.queryPrompt
+	if promptText == "" {
+		if m.querySensitive {
+			promptText = "The server requests sensitive input (e.g., password):"
+		} else {
+			promptText = "The server requests input:"
+		}
+	}
+
+	// Input field
+	inputLabel := "Input: "
+	if m.querySensitive {
+		inputLabel = "🔒 Sensitive Input: "
+	}
+	m.queryInput.Prompt = inputLabel
+
+	// Help text
+	helpText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("Press Enter to submit, ESC to cancel")
+
+	// Combine modal content
+	modalContent := lipgloss.JoinVertical(
+		lipgloss.Left,
+		promptText,
+		"",
+		m.queryInput.View(),
+		"",
+		helpText,
+	)
+
+	modal := modalStyle.Render(modalContent)
+
+	// Center the modal on the screen
+	verticalPadding := (m.height - lipgloss.Height(modal) - 2) / 2
+	if verticalPadding < 0 {
+		verticalPadding = 0
+	}
+
+	paddedModal := lipgloss.NewStyle().
+		PaddingTop(verticalPadding).
+		Render(modal)
+
+	return lipgloss.JoinVertical(lipgloss.Left, title, paddedModal)
+}
+
 // renderDocument renders the current document to the viewport
 func (m *Model) renderDocument() {
 	if m.document == nil {
@@ -530,6 +657,15 @@ func (m *Model) loadURL(url string) tea.Cmd {
 		}
 		defer resp.Close()
 
+		// Handle input requests (status 10/11)
+		if resp.Status.IsInput() {
+			return inputRequestMsg{
+				prompt:    resp.Meta,
+				sensitive: resp.Status == protocol.StatusSensitiveInput,
+				url:       url,
+			}
+		}
+
 		if !resp.Status.IsSuccess() {
 			return errorMsg{err: fmt.Errorf("status %d: %s", resp.Status, resp.Meta)}
 		}
@@ -580,6 +716,12 @@ type pageLoadedMsg struct {
 
 type errorMsg struct {
 	err error
+}
+
+type inputRequestMsg struct {
+	prompt    string
+	sensitive bool
+	url       string
 }
 
 // scrollToLineIfNeeded scrolls the viewport to show the given line number
