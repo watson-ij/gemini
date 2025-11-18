@@ -138,14 +138,20 @@ func parseLink(raw string) *LinkInfo {
 		}
 	}
 
-	// Split on whitespace to separate URL from label
-	parts := strings.SplitN(content, " ", 2)
+	// Split on whitespace (space or tab) to separate URL from label
+	// Find the first whitespace character
+	idx := strings.IndexAny(content, " \t")
 
-	url := parts[0]
+	url := ""
 	label := ""
 
-	if len(parts) > 1 {
-		label = strings.TrimSpace(parts[1])
+	if idx == -1 {
+		// No whitespace found, entire content is the URL
+		url = content
+	} else {
+		// Split at the first whitespace
+		url = content[:idx]
+		label = strings.TrimSpace(content[idx+1:])
 	}
 
 	display := label

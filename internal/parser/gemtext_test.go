@@ -72,6 +72,8 @@ func TestParseLink(t *testing.T) {
 		{"=> gemini://example.com Example Site", "gemini://example.com", "Example Site", "Example Site"},
 		{"=>gemini://example.com", "gemini://example.com", "", "gemini://example.com"},
 		{"=> gemini://example.com   Lots   of   spaces  ", "gemini://example.com", "Lots   of   spaces", "Lots   of   spaces"},
+		{"=> gemini://example.com\tTab separated", "gemini://example.com", "Tab separated", "Tab separated"},
+		{"=> gemini://example.com\tTab\twith\tmultiple\ttabs", "gemini://example.com", "Tab\twith\tmultiple\ttabs", "Tab\twith\tmultiple\ttabs"},
 	}
 
 	for _, tt := range tests {
