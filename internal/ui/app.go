@@ -270,12 +270,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.document != nil && m.document.LinkCount() > 0 {
 				m.selectedLink = (m.selectedLink + 1) % m.document.LinkCount()
 				m.renderDocument()
-				// Scroll to show the selected link
+				// Scroll to show the selected link only if not visible
 				lineNum := parser.GetLineForLink(m.document, m.selectedLink)
-				if lineNum >= 0 {
-					m.viewport.GotoTop()
-					m.viewport.LineDown(lineNum)
-				}
+				m.scrollToLineIfNeeded(lineNum)
 			}
 
 		case key.Matches(msg, m.keys.PrevLink):
@@ -285,11 +282,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.selectedLink = m.document.LinkCount() - 1
 				}
 				m.renderDocument()
+				// Scroll to show the selected link only if not visible
 				lineNum := parser.GetLineForLink(m.document, m.selectedLink)
-				if lineNum >= 0 {
-					m.viewport.GotoTop()
-					m.viewport.LineDown(lineNum)
-				}
+				m.scrollToLineIfNeeded(lineNum)
 			}
 
 		case key.Matches(msg, m.keys.Reload):
@@ -585,6 +580,38 @@ type pageLoadedMsg struct {
 
 type errorMsg struct {
 	err error
+}
+
+// scrollToLineIfNeeded scrolls the viewport to show the given line number
+// only if it's not already visible
+func (m *Model) scrollToLineIfNeeded(lineNum int) {
+	if lineNum < 0 {
+		return
+	}
+
+	// Check if the line is already visible in the viewport
+	topLine := m.viewport.YOffset
+	bottomLine := m.viewport.YOffset + m.viewport.Height - 1
+
+	// If the line is already visible, don't scroll
+	if lineNum >= topLine && lineNum <= bottomLine {
+		return
+	}
+
+	// If the line is above the viewport, scroll up to show it at the top
+	if lineNum < topLine {
+		m.viewport.GotoTop()
+		m.viewport.LineDown(lineNum)
+	} else {
+		// Line is below the viewport, scroll down to show it at the bottom
+		// We want to position it so that lineNum is visible at the bottom of viewport
+		targetOffset := lineNum - m.viewport.Height + 1
+		if targetOffset < 0 {
+			targetOffset = 0
+		}
+		m.viewport.GotoTop()
+		m.viewport.LineDown(targetOffset)
+	}
 }
 
 // Helper function
