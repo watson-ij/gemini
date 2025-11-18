@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/watson-ij/gemini/internal/config"
 	"github.com/watson-ij/gemini/internal/parser"
 	"github.com/watson-ij/gemini/internal/protocol"
 )
@@ -61,6 +62,9 @@ type Model struct {
 	// Navigation history
 	history  []string  // URLs visited
 	historyPos int     // Current position in history
+
+	// Configuration
+	config *config.Config
 
 	// Styles
 	styles Styles
@@ -121,6 +125,13 @@ func DefaultStyles() Styles {
 
 // NewModel creates a new application model
 func NewModel(startURL string) Model {
+	// Load configuration (or use defaults if not found)
+	cfg, err := config.Load()
+	if err != nil {
+		// If there's an error loading config, use defaults
+		cfg = config.DefaultConfig()
+	}
+
 	// Create text input for address bar
 	ti := textinput.New()
 	ti.Placeholder = "gemini://..."
@@ -153,6 +164,7 @@ func NewModel(startURL string) Model {
 		selectedLink: -1,
 		history:      []string{},
 		historyPos:   -1,
+		config:       cfg,
 		styles:       DefaultStyles(),
 	}
 
@@ -421,7 +433,10 @@ func (m Model) browseView() string {
 func (m Model) helpView() string {
 	title := m.styles.TitleBar.Render("Help - Press ? or ESC to close")
 
-	helpContent := `
+	// Get config path for display
+	configPath, _ := config.ConfigPath()
+
+	helpContent := fmt.Sprintf(`
 Gemini Browser - Keyboard Shortcuts
 
 Navigation:
@@ -449,8 +464,18 @@ Other:
   ?              Show this help
   Ctrl+Q         Quit
 
+Configuration:
+  Config file: %s
+
+  Text wrapping is enabled with a default width of 100 characters.
+  To customize, create/edit the config file with:
+
+  [display]
+  wrap_width = 100        # Set to 0 to use terminal width
+  show_line_numbers = false
+
 Press ? or ESC to close this help screen.
-`
+`, configPath)
 
 	content := lipgloss.NewStyle().
 		Padding(1, 2).
@@ -466,11 +491,22 @@ func (m *Model) renderDocument() {
 		return
 	}
 
+	// Determine the wrap width to use
+	// If config.WrapWidth is 0, use the full viewport width
+	// Otherwise, use the minimum of config.WrapWidth and viewport width
+	wrapWidth := m.viewport.Width
+	if m.config.Display.WrapWidth > 0 {
+		if m.config.Display.WrapWidth < wrapWidth {
+			wrapWidth = m.config.Display.WrapWidth
+		}
+	}
+
 	renderer := parser.NewRenderer(&parser.RenderOptions{
-		Width:           m.viewport.Width,
+		Width:           wrapWidth,
 		NumberLinks:     true,
 		HighlightedLink: m.selectedLink,
 		ColorScheme:     parser.DefaultColorScheme(),
+		ShowLineNumbers: m.config.Display.ShowLineNumbers,
 	})
 
 	content := renderer.Render(m.document)

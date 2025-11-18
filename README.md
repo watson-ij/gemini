@@ -18,6 +18,7 @@ A modern, feature-rich terminal-based browser for the [Gemini protocol](https://
 
 - **Beautiful TUI**
   - Syntax-highlighted gemtext rendering
+  - Smart text wrapping with configurable width
   - Link numbering and navigation
   - Vim-inspired keyboard shortcuts
   - Responsive design with lipgloss styling
@@ -148,9 +149,41 @@ gemini/
 
 ## Configuration
 
-Configuration support is planned for future releases. Currently, the application uses sensible defaults.
+The application can be configured via a TOML configuration file located at:
+`~/.config/gemini-client/config.toml`
 
-Planned configuration file location: `~/.config/gemini-client/config.toml`
+If the configuration file doesn't exist, sensible defaults are used.
+
+### Configuration Options
+
+```toml
+[display]
+# Maximum width for text wrapping (in characters)
+# Set to 0 to use the full terminal width
+# Default: 100
+wrap_width = 100
+
+# Show line numbers in the margin
+# Default: false
+show_line_numbers = false
+```
+
+### Creating a Configuration File
+
+A sample configuration file is provided in `config.example.toml`. To use it:
+
+```bash
+# Create config directory if it doesn't exist
+mkdir -p ~/.config/gemini-client
+
+# Copy the example config
+cp config.example.toml ~/.config/gemini-client/config.toml
+
+# Edit to your preferences
+nano ~/.config/gemini-client/config.toml
+```
+
+You can also view the configuration path and settings from within the browser by pressing `?` to open the help screen.
 
 ## Development
 
@@ -225,6 +258,8 @@ Learn more at [geminiprotocol.net](https://geminiprotocol.net)
 - [x] Link navigation
 - [x] Address bar
 - [x] Back/forward history
+- [x] Smart text wrapping
+- [x] Configuration file support
 
 ### v0.2.0 (Next Release)
 - [ ] Tabbed browsing
@@ -237,7 +272,6 @@ Learn more at [geminiprotocol.net](https://geminiprotocol.net)
 - [ ] Client certificates
 - [ ] Theming system
 - [ ] Page caching
-- [ ] Configuration file
 - [ ] Subscriptions
 
 ### v1.0.0 (Stable)

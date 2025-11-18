@@ -1,0 +1,12 @@
+# Gemini Browser Configuration File
+# Copy this to ~/.config/gemini-client/config.toml to customize
+
+[display]
+# Maximum width for text wrapping (in characters)
+# Set to 0 to use the full terminal width
+# Default: 100
+wrap_width = 100
+
+# Show line numbers in the margin
+# Default: false
+show_line_numbers = false
