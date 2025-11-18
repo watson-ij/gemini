@@ -93,12 +93,12 @@ func DefaultKeyMap() KeyMap {
 
 		// Link navigation
 		NextLink: key.NewBinding(
-			key.WithKeys("tab"),
-			key.WithHelp("tab", "next link"),
+			key.WithKeys("tab", "right"),
+			key.WithHelp("tab/→", "next link"),
 		),
 		PrevLink: key.NewBinding(
-			key.WithKeys("shift+tab"),
-			key.WithHelp("shift+tab", "prev link"),
+			key.WithKeys("shift+tab", "left"),
+			key.WithHelp("shift+tab/←", "prev link"),
 		),
 		FollowLink: key.NewBinding(
 			key.WithKeys("enter"),
