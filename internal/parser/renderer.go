@@ -80,6 +80,66 @@ func NewRenderer(opts *RenderOptions) *Renderer {
 	return &Renderer{opts: opts}
 }
 
+// wrapText wraps text to a maximum width, breaking at word boundaries
+func wrapText(text string, width int, indent string) []string {
+	if width <= 0 {
+		return []string{text}
+	}
+
+	// Calculate effective width (accounting for indent on wrapped lines)
+	effectiveWidth := width - len(indent)
+	if effectiveWidth <= 10 {
+		// If indent is too large, don't wrap
+		return []string{text}
+	}
+
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return []string{""}
+	}
+
+	var lines []string
+	var currentLine strings.Builder
+
+	for i, word := range words {
+		// Check if adding this word would exceed width
+		if currentLine.Len() > 0 {
+			testLen := currentLine.Len() + 1 + len(word) // +1 for space
+			maxLen := width
+			if len(lines) > 0 {
+				maxLen = effectiveWidth // Use effective width for continuation lines
+			}
+
+			if testLen > maxLen {
+				// Line would be too long, start a new line
+				lines = append(lines, currentLine.String())
+				currentLine.Reset()
+				if len(lines) > 0 {
+					currentLine.WriteString(indent)
+				}
+				currentLine.WriteString(word)
+			} else {
+				// Add word to current line
+				currentLine.WriteString(" ")
+				currentLine.WriteString(word)
+			}
+		} else {
+			// First word on the line
+			if len(lines) > 0 && i > 0 {
+				currentLine.WriteString(indent)
+			}
+			currentLine.WriteString(word)
+		}
+	}
+
+	// Add the last line
+	if currentLine.Len() > 0 {
+		lines = append(lines, currentLine.String())
+	}
+
+	return lines
+}
+
 // Render renders a document to a string
 func (r *Renderer) Render(doc *Document) string {
 	var b strings.Builder
@@ -88,13 +148,15 @@ func (r *Renderer) Render(doc *Document) string {
 	for i, line := range doc.Lines {
 		rendered := r.renderLine(line, i, &linkIndex)
 		b.WriteString(rendered)
-		b.WriteString("\n")
+		if i < len(doc.Lines)-1 {
+			b.WriteString("\n")
+		}
 	}
 
 	return b.String()
 }
 
-// renderLine renders a single line
+// renderLine renders a single line, with optional text wrapping
 func (r *Renderer) renderLine(line *Line, lineNum int, linkIndex *int) string {
 	cs := r.opts.ColorScheme
 
@@ -106,13 +168,13 @@ func (r *Renderer) renderLine(line *Line, lineNum int, linkIndex *int) string {
 
 	switch line.Type {
 	case LineTypeHeading1:
-		return prefix + cs.Heading1 + "# " + line.Text + cs.Reset
+		return r.renderWrappedLine(prefix+cs.Heading1+"# "+cs.Reset, line.Text, cs.Heading1, cs.Reset, "  ")
 
 	case LineTypeHeading2:
-		return prefix + cs.Heading2 + "## " + line.Text + cs.Reset
+		return r.renderWrappedLine(prefix+cs.Heading2+"## "+cs.Reset, line.Text, cs.Heading2, cs.Reset, "   ")
 
 	case LineTypeHeading3:
-		return prefix + cs.Heading3 + "### " + line.Text + cs.Reset
+		return r.renderWrappedLine(prefix+cs.Heading3+"### "+cs.Reset, line.Text, cs.Heading3, cs.Reset, "    ")
 
 	case LineTypeLink:
 		linkNum := *linkIndex
@@ -130,15 +192,27 @@ func (r *Renderer) renderLine(line *Line, lineNum int, linkIndex *int) string {
 			linkLabel = fmt.Sprintf("[%d] ", linkNum+1)
 		}
 
-		return prefix + style + linkLabel + line.Link.Display + cs.Reset
+		linkPrefix := prefix + style + linkLabel
+		// Calculate indent width (without ANSI codes)
+		indentWidth := len(prefix) + len(linkLabel)
+		indent := strings.Repeat(" ", indentWidth)
+
+		return r.renderWrappedLine(linkPrefix, line.Link.Display, style, cs.Reset, indent)
 
 	case LineTypeListItem:
-		return prefix + cs.ListBullet + "• " + cs.Reset + line.Text
+		bulletPrefix := prefix + cs.ListBullet + "• " + cs.Reset
+		// Indent continuation lines to align with text after bullet
+		indent := strings.Repeat(" ", len(prefix)+2)
+		return r.renderWrappedLine(bulletPrefix, line.Text, cs.Text, cs.Reset, indent)
 
 	case LineTypeQuote:
-		return prefix + cs.Quote + "│ " + line.Text + cs.Reset
+		quotePrefix := prefix + cs.Quote + "│ "
+		// Indent continuation lines with quote bar
+		indent := strings.Repeat(" ", len(prefix)) + cs.Quote + "│ " + cs.Reset
+		return r.renderWrappedLine(quotePrefix, line.Text, cs.Quote, cs.Reset, indent)
 
 	case LineTypePreformatted:
+		// Don't wrap preformatted text
 		return prefix + cs.Preformat + line.Text + cs.Reset
 
 	case LineTypePreformatToggle:
@@ -149,11 +223,74 @@ func (r *Renderer) renderLine(line *Line, lineNum int, linkIndex *int) string {
 		if line.Text == "" {
 			return "" // Empty line
 		}
-		return prefix + cs.Text + line.Text + cs.Reset
+		return r.renderWrappedLine(prefix, line.Text, cs.Text, cs.Reset, prefix)
 
 	default:
 		return prefix + line.Text
 	}
+}
+
+// renderWrappedLine renders a line with text wrapping
+func (r *Renderer) renderWrappedLine(linePrefix, text, colorStart, colorEnd, contIndent string) string {
+	if r.opts.Width <= 0 {
+		// No wrapping
+		return linePrefix + colorStart + text + colorEnd
+	}
+
+	// Calculate available width for text (accounting for prefix length without ANSI codes)
+	// We need to count visible characters only, not ANSI escape codes
+	visiblePrefixLen := len(stripANSI(linePrefix))
+	availableWidth := r.opts.Width - visiblePrefixLen
+
+	if availableWidth <= 10 {
+		// Not enough space to wrap meaningfully
+		return linePrefix + colorStart + text + colorEnd
+	}
+
+	// Wrap the text
+	wrappedLines := wrapText(text, availableWidth, stripANSI(contIndent))
+
+	if len(wrappedLines) == 0 {
+		return linePrefix + colorStart + colorEnd
+	}
+
+	var result strings.Builder
+
+	// First line uses the original prefix
+	result.WriteString(linePrefix)
+	result.WriteString(colorStart)
+	result.WriteString(wrappedLines[0])
+	result.WriteString(colorEnd)
+
+	// Continuation lines use indent
+	for i := 1; i < len(wrappedLines); i++ {
+		result.WriteString("\n")
+		result.WriteString(contIndent)
+		result.WriteString(colorStart)
+		result.WriteString(wrappedLines[i])
+		result.WriteString(colorEnd)
+	}
+
+	return result.String()
+}
+
+// stripANSI removes ANSI escape codes from a string to get visible length
+func stripANSI(s string) string {
+	// Simple ANSI stripper for length calculation
+	var result strings.Builder
+	inEscape := false
+
+	for _, r := range s {
+		if r == '\033' {
+			inEscape = true
+		} else if inEscape && r == 'm' {
+			inEscape = false
+		} else if !inEscape {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
 }
 
 // RenderToPlainText renders a document to plain text (no colors)
