@@ -243,7 +243,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 
 		case key.Matches(msg, m.keys.FollowLink):
-			if m.selectedLink >= 0 && m.selectedLink < len(m.document.Links) {
+			if m.document != nil && m.selectedLink >= 0 && m.selectedLink < len(m.document.Links) {
 				link := m.document.Links[m.selectedLink]
 				url := link.Link.URL
 				// Resolve relative URLs
@@ -387,9 +387,14 @@ func (m Model) browseView() string {
 		statusLeft = "Loading..."
 	}
 
+	linkCount := 0
+	if m.document != nil {
+		linkCount = m.document.LinkCount()
+	}
+
 	statusRight := fmt.Sprintf("Link %d/%d | %d%% | ? for help",
 		m.selectedLink+1,
-		m.document.LinkCount(),
+		linkCount,
 		int(float64(m.viewport.YOffset)/float64(max(1, len(strings.Split(m.viewport.View(), "\n"))-1))*100))
 
 	statusPadding := m.width - lipgloss.Width(statusLeft) - lipgloss.Width(statusRight)
